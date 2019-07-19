@@ -1,0 +1,203 @@
+short off
+
+| -----------------------------------------------------------------
+| ANS compatiblity layer for HelFORTH
+|
+| Note: We have to trick the bytecode interpreter because of word
+|       redefinitions that confuse the compilation cache.
+|
+context ans~
+context (ans)~
+enter (ans)~
+
+: rot [ $0689168b , $8904468b , $0456 2, ; ' ?inline class'
+
+
+: !!     tuck cell+ ! ! ;
+: acreat e{ ans~ creates ans~ last' } ;
+: ans:   state 56 + @ wsparse >pad >upstr acreat cell+ ! ] ;
+: ans    wsparse >pad 2dup find @@ 2swap >upstr acreat !! ;
+: ans/i: macro ans: forth ;
+|
+|
+|
+create thetib 256 allot
+variable (tib)
+: tib (tib) @ ;
+variable #tib
+: source tib #tib @ dup if 2dup 1- + c@ 10 =if 1- then then ;
+variable >in
+: readl pad
+  dup begin
+    key ?dup while
+    dup >r over c! 1+
+    r> 10 <>while
+  repeat over - ;
+: refresh-source
+  thetib (tib) ! >in off
+  like key undo key readl dup #tib ! tib swap cmove is key
+: ans-keysetup
+  tib >in @ + state 16 + !
+  #tib @ >in @ - state 20 + ! ;
+: +ans-input-handle
+  make (MoreInput)
+    undo (MoreInput) refresh-source +ans-input-handle
+    #tib @ if  v: key ;then 0 ;then
+  make key | '* emit
+    ans-keysetup v: key state 16 + @ tib - >in ! ;then ;
+: accept tuck 0 ?do
+  (SysKey) dup 10 =if 2drop i swap leave then
+  over c! 1+ loop drop ;
+: word
+  #tib @ >in @ =if stub: drop pad dup off ;then
+  begin
+    key dup 10 =if drop stub ;then
+    2dup =while drop repeat
+  here >r begin
+    1,
+    key dup 10 =if
+      stub: 2drop r> here over - pad dup >r place r> ;then
+    2dup =if stub ;then
+  repeat ;
+|
+| "smudge" is a speciality you need to make searching order in ANS
+| correct. A word is not in dictionary until it is completed.
+| To avoid doubling and endless-links in dictionary "smudge" needs
+| to be called only once. Therefore "lastdef" is created for
+| words like "IMMEDIATE" that access the last definition.
+| Think about: : test [ IMMEDIATE ] ... ; :NONAME ... ;
+| All in all something I dont like in ANS... -Helmar
+|
+variable (smudge)
+: smudge          (smudge) @
+                  ?dup if last @ over ! last ! (smudge) off then ;
+: lastdef         (smudge) @ ?dup if ;then last @ ;
+variable (source-id)
+: source-id       (source-id) @ if -1 ;then 0 ;
+|
+| POSTPONE in ANS is a rather complex thing. Especially if things are
+| organized like in HelFORTH. So eg. we have to keep track about
+| STATE. This is really trashy...
+|
+10 stack (postpones)
+variable (inpostpone)
+: <postpone       1 (inpostpone) +! state @ push (postpones) 321 state ! ;
+: postpone>       -1 (inpostpone) +! pop (postpones)
+                  state @ 321 =if state ! ;then drop ;
+: post-state      state @ 321 <>if state ;then
+                  tos (postpones) cell+
+                  (inpostpone) @ 0 ?do
+                    cell- dup @ 321 <>if leave then
+                  loop ;
+|
+| definition of the ANS-words
+|
+quote %
+80 times ans
+    !      #>       '        (       *
+    */     */mod    +        +!      +loop
+| 10
+    ,      -        .        ."      /
+    /MOD   1+       1-       2/      2drop
+| 20
+    2dup   2swap    <#       >in     ?dup
+    @      abs      accept   allot   and
+| 30
+    base   c!       c@       cell+   cells
+    char   constant count    cr      create
+| 40
+    depth  drop     dup      emit    execute
+    fill   here     hold     i       if
+| 50
+    j      key      leave    literal loop
+    mod    move     negate   or      over
+| 60
+    source space    spaces   swap    then
+    type   u.       variable word    xor
+| 70
+    [      [']      [char]   ]       do
+    does>  else     >r       r>      rot
+| 80
+
+' ?inline class !
+ans: 2*           1 << ;
+ans: c,           1, ;
+ans: char+        1+ ;
+ans: invert       -1 xor ;
+ans: lshift       << ;
+ans: bl           32 ;
+ans: rshift       >> ;
+ans: 2@           | dup cell+ @ swap @ ;
+                  [ $8b04ee83 , $16890450 , $008b 2, ;
+ans: r@           r ;
+forth
+ans:   2!           | tuck ! cell+ ! ;
+                    [ $1089168b , $8904568b , $c6830450 , $fc468b0c , ;
+ans:   #            swap # swap ;
+ans:   #s           swap #s swap ;
+ans:   0<           0 swap >if -1 ;then 0 ;
+ans:   0=           if 0 ;then -1 ;
+ans:   2over        >r >r 2dup r> r> 2swap ;
+ans:   :            last @ x: : last @ (smudge) ! last ! ;
+ans/i: ;            $c3 1, smudge x: [ ;
+ans:   <            swap >if -1 ;then 0 ;
+ans:   =            =if -1 ;then 0 ;
+ans:   >            >if -1 ;then 0 ;
+ans:   >body        ;
+stub:               2swap swap 2swap ;
+ans:   >number      stub >number stub ;
+ans:   abort        bye ;                 | ans~ XXX
+ans/i: abort"       x: if x: " e: type ans~ e: ABORT x: ;then ;
+ans:   align        ;
+ans:   aligned      ;
+ans/i: begin        here ;
+ans:   chars        ;
+ans:   decimal      10 base ! ;
+ans:   environment? 0 ;
+ans:   evaluate     1 (source-id) +!
+                    tib >r >in @ >r #tib @ >r
+                    like (MoreInput) >r
+                    make (MoreInput) 0 ;then
+                    #tib ! (tib) ! >in off
+                    interpret drop
+                    r> is (MoreInput)
+                    r> #tib ! r> >in ! r> (tib) !
+                    -1 (source-id) +! ;
+ans/i: exit         $c3 1, ;
+ans:   find         count 2dup find dup if nip nip dup @ swap
+                    cell+ @ ['] execute =if 1 ;then -1 ;then ;
+ans:   fm/mod       >r swap r> fm/mod ;
+ans:   immediate    ['] execute lastdef cell+ count + cell+ ! ;
+ans:   m*           m* swap ;
+ans:   max          2dup >if drop ;then nip ;
+ans:   min          2dup >if nip ;then drop ;
+ans/i: postpone     e: <postpone
+                    x: e:
+                    e: postpone> ;
+ans:   quit         rdrop interpret ; | ans~ XXX cheat here a little :)
+ans/i: recurse      lastdef cell+ count + @ compile ;
+ans/i: repeat       back e: then ;
+ans/i: s"           x: " ;
+ans:   s>d          s>d swap ;
+ans:   sign         0 swap >if '- hold ;then ;
+ans:   sm/rem       >r swap r> sm/rem ;
+ans:   state        post-state ;
+ans:   u<           u<if -1 ;then 0 ;
+ans:   um*          um* swap ;
+ans:   um/mod       >r swap r> um/mod ;
+ans:   unloop       r> rdrop rdrop >r ;
+ans/i: until        0 x: literal x: =if swap back x: then ;
+ans/i: while        x: if swap ;
+% eval
+
+| ::   ?inline state @ if
+|        ? dup ans~ [?] + =if drop
+|          ? dup ans~ [?] SWAP =if drop
+|            cp @ here - allot
+|            $044601 3, e: drop
+|          ;then
+|          e: +
+|        then exec
+|      ;then ; ans~ ? ROT cell+ !
+
+;enter

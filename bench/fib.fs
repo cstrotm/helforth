@@ -1,0 +1,13 @@
+: FIB ( N1 -- N2 )
+    DUP 2 < IF
+	DROP 1
+    ELSE
+	DUP
+	1- RECURSE
+	SWAP 2 - RECURSE
+	+
+    THEN ;
+
+: MAIN 34 FIB . ;
+MAIN
+BYE

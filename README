@@ -1,0 +1,13 @@
+This is part of my work on HelFORTH 2
+
+The binaries
+
+  hf
+  hf-mega
+
+should work with Linux *and* OpenSolaris.
+At the moment it's not possible to use (SysCall) and friends with
+OpenSolaris.
+To compile the versions yourself you need gcc installed.
+
+Helmar

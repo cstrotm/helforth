@@ -1,0 +1,31 @@
+#! /usr/bin/perl
+
+use strict;
+
+my $file = $ARGV[0];
+
+my $dictionary = "include \"$file.dict\"";
+my $interface = "macro INTERFACE { }";
+if (-e "$file.if") {
+	$interface = "include \"$file.if\"";
+}
+my $bootstrap = "file \"$file.bc\"";
+
+my $asm = <<EOT;
+
+format elf executable
+
+entry main
+main:
+
+HAS_CORE_INTERFACE = 0
+macro DICTIONARY { $dictionary }
+$interface
+macro BOOTSTRAP { $bootstrap }
+macro hfds_section { }
+
+include "core.asm"
+
+EOT
+
+print $asm

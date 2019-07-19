@@ -1,0 +1,13 @@
+| ---------- misc tools ---------------------------------------------------
+|
+: .s         '< emit depth 0 over >if '- emit negate then (#) '> emit space
+             depth 0 >if depth for r 1- pick . loop then ;
+
+32 3 * stack (try)
+::           subr here swap ! ;
+: exception? [ class' ] rr> drop 0 stub: [ -3 cells literal ] ['] (try) +! ;
+: try        r @ m{ push (try) } depth m r> rp m cell+ ['] stub >r >r ;
+::           subr here ['] bye , ; class'
+: throw      m{ pop (try) } begin rp over u<while rdrop repeat drop
+             >r depth m - 0 over >if 1 then ndrop r> m >r ;
+: catch      try execute exception? ;

@@ -1,0 +1,59 @@
+| --------------------------------------------------------
+| ANS core extensions
+|
+| Requires: ans
+
+enter (ans)~
+
+quote %
+
+ans #tib
+ans: .(            ') parse type ; ans~ immediate
+ans: .r            ; ans~ XXX
+ans: 0<>           if -1 ;then 0 ;
+ans: 0>            0 >if -1 ;then 0 ;
+ans: 2>r           swap >rr >rr ;
+ans: 2r>           rr> rr> swap ;
+ans: 2r@           rr> rr> 2dup >rr >rr swap ;
+ans: :noname       x: :: ;
+ans: <>            <>if -1 ;then 0 ;
+ans: ?do           e: ?do ; ans~ immediate
+ans: again         e: repeat ; ans~ immediate
+ans: c"            e: " ; ans~ immediate
+ans: case          e: case ; ans~ immediate
+ans: compile,      compile ;
+ans: convert       ; ans~ XXX
+ans: endcase       e: endcase ; ans~ immediate
+ans: endof         e: endof ; ans~ immediate
+ans: erase         ; ans~ XXX
+ans: expect        ; ans~ XXX
+ans: false         0 ;
+ans: hex           16 base ! ;
+ans: marker        ; ans~ XXX
+ans nip
+ans: of            e: of ; ans~ immediate
+ans pad
+ans parse
+ans pick
+ans: query         ; ans~ XXX
+ans: refill        0 ;
+ans: restore-input ndrop -1 ;
+ans: roll          [ $8e048b91 , $8b09e3 3, $89fc8e54 , $f7e28e14 , $04c683 3, ;
+ans: save-input    0 ;
+ans source-id
+ans: span          ; ans~ XXX
+ans tib
+ans: to            ; ans~ XXX
+ans: true          -1 ;
+ans tuck
+ans: u.r           ; ans~ XXX
+ans: u>            swap u<if -1 ;then 0 ;
+ans: unused        ; ans~ XXX
+ans: value         ; ans~ XXX
+ans: within        ; ans~ XXX
+ans: [compile]     e: x: ;
+ans: \             x: | ; ans~ immediate
+
+% eval
+
+;enter

@@ -1,0 +1,253 @@
+| ====================================================================
+|  HelFORTH - bootstrap code
+|      File: nano.h4
+|   Version: 1.0 pre 11
+|    Author: Helmar Wodtke
+|      Year: 2004, 2005
+| --------------------------------------------------------------------
+| Requires: hf-pico
+| from pico: x: ; (word) (/word) space (.word) last words . cell+ 5+ used
+|
+forth
+: base       state 8 + ;
+: cp         state 40 + ;
+: class      state 56 + ;
+: last'      last @ cell+ dup c@ + 1+ ;
+: immediate  [ ' execute literal
+: class'     last' cell+ ! ;
+: place      2dup c! 1+ swap cmove ;
+: count      1+ dup 1- c@ ;
+: stub       ;
+macro
+: (          ') parse 2drop ;
+: v:         ' 1+ @r ?execute ;
+: ::         align cp on here dup [?] stub ! ] ;
+: stub:      x: :: drop ;
+forth
+::           v: create ['] ?literal class' ; ' create branch!
+: constant   create last' ! ;
+256 constant /pad
+
+| --------------------------------------------------------------------
+| basic control structures
+|
+: (comp)      vector $adad0639 ,
+: (cond)      vector $f 1, $80 or 1, here 0 , ;
+: forward     vector $e9 1, here 0 , ;
+: back        compile e: ;; ;
+macro
+: if          vector $adc009 3, 4 (cond) ;
+: else        forward swap
+: then        vector cp on 0; here swap !r ;
+: ;then       e: ;; x: then ;
+: u<if        3 (comp) ;
+: <>if        4 (comp) ;
+: =if         5 (comp) ;
+: >if         $e (comp) ;
+forth
+::            short @ if $70 or 2, here 1- ;then v: (cond) ; ' (cond) branch!
+::            short @ if cp on 0; here over 1+ - swap c!
+              ;then v: then ;                                ' then branch!
+short on
+::            short @ if $eb 2, here 1- ;then v: forward ;   ' forward branch!
+: and:        if ;then rdrop ;
+: or:         if rdrop then ;
+
+| ---------------------------------------------------------------------
+| misc optimizations / tools
+|
+: dup?       cp @ here 5 - =if
+                here 5 - @ $8904ee83 =if
+                  here 1- c@ $06 =if 1 ;then
+                then
+             then 0 ;
+variable lcp lcp on
+: lit?       vector cp @ here 5 - =if here 5 - c@ $b8 =if 1 ;then then 0 ;
+: lit        vector -5 allot lcp @ cp ! here 1+ @
+             dup? if -5 allot else here cp ! $ad 1, then ;
+::           lit? if lit $3d 1, , $ad 1, (cond)
+             ;then v: (comp) ;                               ' (comp) branch!
+: drop?      cp @ here 1- =if here 1- c@ $ad =if 1 ;then then 0 ;
+::           drop? if -1 allot ;then v: dup, ;               ' dup, branch!
+::           drop? if -1 allot lcp on
+             else here lcp ! dup,
+             then here cp ! $b8 1, , ;                       ' literal branch!
+| : call?      cp @ here 5 -      <>if drop 0 ;then
+|              here 5 - c@ $E8    <>if drop 0 ;then
+|              here dup cell- @ + <>if 0 ;then 1 ;
+
+| --------------------------------------------------------------------
+| extended return stack manipulation
+|
+                        :: compile cp on ;
+: then>      r> [       class'
+: subr       state @ if stub ;then >r ;
+' subr class !
+: rr         dup [ $0824448b , ;
+: rr>        dup [ $0487585a , $e2ff24 3,
+: >rr        [ $2404875a , $e2ffad50 ,
+: later>     rr> >r ;
+: class>     r> class' ;
+macro
+: does>      e: class> then> state @ if x: literal r> compile ;then ;
+forth
+
+| --------------------------------------------------------------------
+| stack handling
+|
+: stack  create here , cells allot does> @ @ ;
+: (push) | 4 over +! @ ! ;
+         [ $8b040083 , $0289ad10 , $ad 1, ;
+: (pop)  | dup @ @ swap -4 swap +! ;
+         [ $2883108b , $028b04 3, ;
+: (snd)  @ cell- ;
+macro
+: push   ' ?literal e: (push) ;
+: pop    ' ?literal e: (pop) ;
+: tos    ' ?literal e: @ ;
+: snd    ' ?literal e: (snd) ;
+forth
+
+| ------------------------------------------------------------------
+| loop control
+|
+100 stack (loops)
+: (do)        lit? if lit $50 1, ?dup if $2d 1, , then $ad50 2, 8 ;then
+              $2950ad92 , $ad50d0 3, 8 ;
+variable (again)
+: >again< (again) @ swap (again) ! ;
+macro
+: begin       cp on here >again< 0 push (loops) ;
+: leave       forward        push (loops) ;
+: again       (again) @ back ;
+: while       e: if          push (loops) ;
+: u<while     e: u<if        push (loops) ;
+: <>while     e: <>if        push (loops) ;
+: =while      e: =if         push (loops) ;
+: >while      e: >if         push (loops) ;
+: repeat      >again< back [ stub: pop (loops) 0; x: then stub ;
+: for         $ad50 2, 4 x: begin ;
+: do          (do) x: begin ;
+: ?do         (do) 0 push (loops) 4 (cond) push (loops) here >again< ;
+: loop        $0f240cff , $85 1,
+[ forth
+: (loop)      >again< here cell+ - ,
+              stub $c483 2, 1, ;
+macro
+: +loop       $0778c085 , $7f240429 , $830beb10 , $7400243c ,
+              $24042905 , $ebad037e , $ad06 2,
+              $e9 1, (loop) ;
+: i           dup, $0424448b , $24042b 3, ;
+: j           dup, $0c24448b , $0824442b , ;
+forth
+
+| ----------------------------------------------------------------------
+| optimizing class for "state"
+|
+stub:        ['] state inline ;
+: (state+)    dup [?] (number) =if @
+               ? dup [?] + =if drop e: dup $838d 2, , rdrop
+               else stub swap x: literal ;then
+             else stub ;then ;
+::           drop state @ if
+               ? dup [?] @ =if drop
+                 ? dup [?] if =if drop
+                   $3b83 3, 4 (cond) ;;
+                 else e: dup $038b 2, then
+               else (state+) then exec
+             ;then state ; ? state cell+ !
+
+| --------------------------------------------------------------------
+| string handling
+|
+: (")        vector r> dup cell+ >r @ dup 1- c@ ;
+: "          '" parse [ immediate
+: (string)   state @ if 1+ state 28 + +! e: (") , ;then
+: >pad       tuck pad dup >r swap cmove r> swap ;
+: ."         x: " e: type ; immediate
+
+| --------------------------------------------------------------------
+| basic parts of vectorized execution
+|
+: doer       x: : $E9 1, 0 , $E9 1, ['] nop ,r x: [ ;
+: (undo)     $E9 over c! 1+ off ;
+: (make)     r dup c@ $e9 =if 5+ else 2+ then swap branch! ;
+macro
+: like       ' 1+ ?literal e: @r ;
+: is         ' state @ if x: literal e: branch! ;then
+stub:        dup 5+ c@ $e9 =if 2dup 5+ branch! then branch! ;
+: undo       ' ?literal e: (undo) ;
+: make       state @ if ' x: literal e: (make) forward ;then
+ 	     here ' stub ] ;
+forth
+
+| ---------- misc: ---------------------------------------------------
+create optimize 1 ,
+variable verbose
+::           verbose @ or: dup 5+ c@ '( =if drop rdrop then ; is (word)
+: .          0 over >if '- emit negate then
+: u.         (#) space ;
+: abs        dup 0 >if ;then negate ;
+
+| --------------------------------------------------------------------
+| some optimizations
+|
+: opt?       optimize @ state @ and if lit? if lit swap ;then then 0 ;
+: :opt       x: :: e: opt? x: if ;
+: ;opt       x: ;then ? cell+ dup @ compile ! x: ;; x: [ ; immediate
+:opt         $07c7 2, , $04c783 3,                           ;opt ,
+:opt         $07c766 3, 2, $4747 2,                          ;opt 2,
+:opt         $07c6 2, 1, $47 1,                              ;opt 1,
+:opt         $a3 1, , e: drop                                ;opt !
+:opt         e: dup $a1 1, ,                                 ;opt @
+:opt         $0501 2, , e: drop                              ;opt +!
+:opt         $c781 2, ,                                      ;opt allot
+:opt         $ba 1, , $e2f7 2,                               ;opt *
+:opt         $b9 1, , $f9f799 3,                             ;opt /
+:opt         $05 1, ,                                        ;opt +
+:opt         $2d 1, ,                                        ;opt -
+:opt         $25 1, ,                                        ;opt and
+:opt         $0d 1, ,                                        ;opt or
+:opt         $35 1, ,                                        ;opt xor
+:opt         $e0c1 2, 1,                                     ;opt <<
+:opt         $e8c1 2, 1,                                     ;opt >>
+:opt         ?dup if 1- 2 << dup 128 u<if
+               ?dup if $c683 2, 1, then
+             else $c681 2, , then $ad 1, then                ;opt ndrop
+:opt         cells x: literal                                ;opt cells
+:opt         cell+ x: literal                                ;opt cell+
+:opt         cell- x: literal                                ;opt cell-
+:opt         1+    x: literal                                ;opt 1+
+:opt         1-    x: literal                                ;opt 1-
+:opt         2+    x: literal                                ;opt 2+
+:opt         2-    x: literal                                ;opt 2-
+:opt         5+    x: literal                                ;opt 5+
+:opt         dup abs 2 u<if dup, $c031 2,
+                ?dup if -1 =if $48 1, else $40 1, then then 
+             else x: literal then $c3 1,                     ;opt ;;
+
+| --------------------------------------------------------------------
+| implementation of "case"
+|
+macro
+: case       0 ;
+: of         lit? if lit ?dup if $3d 1, , else $c009 2, then
+             else $ad063b 3, then 5 (cond) e: drop ;
+: endof      swap   x: then x: else ;
+: endcase    $ad 1, x: then ;
+forth
+
+| -------------------------------------------------------------------
+| simple temporary compilation (will be extended in "hf"-stage)
+|
+macro
+: {          vector here >rr ] ;
+: }          vector x: ; rr execute rr> here - allot ;
+forth
+
+| ------------------- System initialisation -------------------------
+{ rp 0 >if
+    ['] (Semit) is emit
+    ['] (Sbye) is bye
+    ['] (SSysKey) is (SysKey)
+  then }

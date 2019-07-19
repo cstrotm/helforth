@@ -1,0 +1,85 @@
+#! /usr/bin/perl
+
+my $HFSL = "HFSL";
+
+if (! -d $HFSL) {
+  $HFSL = $0;
+  $HFSL =~ s/\/[^\/]+\/[^\/]+$//g or $HFSL = "..";
+  $HFSL .= "/HFSL";
+  print STDERR "HFSL = $HFSL\n";
+}
+
+sub readfile {
+  my $fn = shift;
+  open IN, "<$fn" or die "$0: could not open $fn\n";
+  my $input = join('', <IN>);
+  close IN;
+   return $input; 
+}
+sub requires {
+  my @r;
+  while (defined (my $fn = shift)) {
+    my $input = readfile $fn;
+    while ($input =~ /Requires:([^\r\n]+)/g) {
+      my $r = $1;
+      push @r, $1 while $r =~ /(\S+)/g;
+    }
+  }
+  return @r;
+}
+sub basefile {
+  my $fn = shift;
+  if (-f $fn) {
+    return $fn if ! -x $fn;
+  }
+  return "$fn.h4" if -f "$fn.h4";
+  return;
+}
+sub findfile {
+  my $fn = shift;
+  my $r = basefile $fn;
+  return $r if defined $r;
+  $r = basefile "$HFSL/$fn";
+  return $r if defined $r;
+  for (sort glob("$HFSL/*")) {
+    next if ! -d $_;
+    next if /\.$/;
+    $r = basefile "$_/$fn";
+    return $r if defined $r;
+  }
+  return;
+}
+my %done;
+my @order;
+sub getorder;
+sub getorder {
+  while (defined (my $fnb = shift)) {
+    my $fn = findfile $fnb;
+    die "$0: could not find $fnb\n"
+      if not defined $fn;
+    next if defined $done{$fn};
+    $done{$fn} = 1;
+    getorder(requires($fn));
+    push @order, $fn;
+  }
+}
+
+getorder @ARGV;
+my @cleanorder;
+my $system;
+for (@order) {
+  if (m|/System/| && not defined $system) {
+    $system = $_;
+  } else {
+    push @cleanorder, $_;
+  }
+}
+if (not defined $system) {
+  for ("Default.h4", "$HFSL/System/Default.h4") {
+    if (-f $_) {
+      $system = $_;
+      last;
+    }
+  }
+}
+print join(" ", $system, @cleanorder), "\n";

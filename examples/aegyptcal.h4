@@ -1,0 +1,46 @@
+'| parse
+
+  365 Tage
+  3 Jahreszeiten a 4 Monate:
+    Achet
+    Peret
+    Schemu
+
+  12 Monate a 30 Tage + 5 Epagomenen
+  1 Dekade = 10 Tage ("Tag 1" bis "Tag 10")
+
+  Epagomenen-Namen:
+    Osiris Horus Seth Isis Nephthys
+
+  Regierungsjahr 2, Monat 1 der Peret-Jahreszeit, Tag 5
+  unter der Majestät des Königs von Ober- und Unterägypten
+  User-Maat-Re Setepenre
+
+  31.5.1279 v. Chr. (julianisch) (-11 Tage für gregorianisch)
+  =
+  Regierungsjahr 1, Monat 3 der Schemu-Jahreszeit, Tag 28
+  (28.11.)
+
+  Das ist auch der erste Tag im ersten Regierungsjahr (sprich: das
+  Regierungsjahr beginnt nicht am 1.1.)
+
+| 2drop
+
+: t-args    '> parse (string) then> dup if space then type '> emit ;
+macro
+: <td       e{ ." <td" } t-args then> later> ." </td>" ;
+: <tr       e{ ." <tr" } t-args then> later> ." </tr>" cr ;
+: <table    e{ ." <table" } t-args then> later> ." </table>" cr ;
+forth
+
+: day       vector <td > dup (#) 10 + ;
+: row       dup 10 mod if <tr align="right">
+            else <tr align="right" bgcolor="lightblue">
+            then dup 3 times day drop 1+ ;
+: month     <td > <table > 1 10 times row drop ;
+: a_season  <td valign="top">
+            <\ " Achet" \\ " Peret" \\ " Schemu" \> type ;
+: season    <tr > a_season 4 times month ;
+: year      <table cellspacing="8"> 3 times season ;
+
+year

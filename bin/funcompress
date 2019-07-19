@@ -1,0 +1,34 @@
+#! /usr/bin/perl
+# =================================================
+#  HelFORTH - build system
+#      File: bin/funcompress
+#   Version: 0.4
+#    Author: Helmar Wodtke
+#      Year: 2004
+# -------------------------------------------------
+
+use strict;
+
+my $src = join('', <>);
+my $p = 32;
+my @tokenp;
+
+for (my $i = 0; $i < length($src); $i++) {
+	my $c = ord(substr($src, $i, 1));
+	my $d;
+	if ($c < 32) {
+		$d = $tokenp[$c] = substr($src, $i + 1, ($c & 15));
+		$i += $c & 15;
+		if (!($c & 16)) {
+			$tokenp[$p++] = $d;
+			$p = 32 if $p > 254;
+		}
+	} elsif ($c == 255) {
+		$d = $tokenp[$c] = '$'.unpack("H*", substr($src, $i + 1, 1));
+		$i++;
+	} else {
+		$d = $tokenp[$c];
+	}
+	print $d;
+	print " " if length($tokenp[$c]) ne 15;
+}

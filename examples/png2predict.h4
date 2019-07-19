@@ -1,0 +1,16 @@
+
+variable (size)
+: png2predict | ptr count size --
+  dup (size) ! / pad dup (size) @ 0 fill
+  swap for
+    over pad dup >r (size) @ cmove
+    (size) @ for
+      over c@ over c@ - >r
+      1+ swap r> over c! 1+ swap
+    loop drop r>
+  loop 2drop ;
+
+" abcdefghijklmnopqr" 2dup 3 png2predict type
+cr
+cr
+see png2predict

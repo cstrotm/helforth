@@ -1,0 +1,2 @@
+: :NONAME HERE ] ;
+: NIP SWAP DROP ;

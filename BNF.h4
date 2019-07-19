@@ -1,0 +1,32 @@
+| BNF parser for HelFORTH
+| -----------------------------------------------------------
+| Author: Helmar Wodtke
+| Year: 2005
+|
+context bnf~
+enter bnf~
+
+variable tp
+variable success
+doer @token make @token tp @ c@ ;
+doer +token make +token 1 tp +! ;
+: success? success @ ;
+: {{    ['] success? compile x: if ;   immediate
+: }}    x: then ;                      immediate
+: back  rdrop r> tp ! ;
+: <bnf  {{ tp @ >rr ;;                     }} rdrop ;
+: bnf>  {{ rdrop ;;                        }} back [ $c3 1,
+: ||    {{ rdrop rdrop ;;                  }} rr tp ! success on ;
+: ??    {{ rr> drop <bnf ;;                }} success on back ;
+: &&    {{ rr> drop <bnf ;;                }} back ;
+: <nest {{ r> dup @ >r tp @ >r cell+ >r ;; }} back ;
+: ((    ['] <nest compile here 0 , ;          immediate
+: ;bnf  ['] bnf> compile x: ; ;        immediate
+: ))    x: ;bnf ] here swap ! ;        immediate
+: token constant
+  does> {{ @token =if +token ;;
+                   then success off ;;     }} drop back ;
+: bnf:  : ['] <bnf compile ;
+
+;enter
+| -------------------------------------------------------------

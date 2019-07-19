@@ -1,0 +1,29 @@
+| Requires:
+| ====================================================================
+|  HelFORTH - bootstrap code
+|      File: pico.h4
+|   Version: 1.0 pre 11
+|    Author: Helmar Wodtke
+|      Year: 2004, 2005
+| --------------------------------------------------------------------
+
+macro
+: x:         ' compile ;;
+: [']        ' ?literal ;;
+: [?]        ? ?literal ;;
+: e:         x: [?] ['] exec ?execute ;;
+: ;          e: ;; x: [ ;;
+[ forth
+: (word)     vector ;
+: (wordname) 5+ dup 1- c@ 63 and ;
+: (/word)    vector
+: space      32 emit ;
+: (.word)    vector (word) (wordname) type (/word) ;
+: last       state cell+ ;
+: words      vector last [ here ] @ 0; dup (.word) [ compile ;
+: !r         [ $d029ad92 , $8904e883 , $ad02 2, ;
+: ,r         here 4 allot !r ;
+: branch!    dup $E9 swap c! 1+ !r ;
+: used       here state 32 + @ - ;
+: variable   create 0 , ;
+variable short

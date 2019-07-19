@@ -1,0 +1,88 @@
+#! /usr/bin/perl
+
+use strict;
+
+my $url;
+$url = shift @ARGV if $ARGV[0] =~ /^https?:/;
+
+my %description;
+if (defined $ARGV[0]) {
+  my $descfile = shift @ARGV;
+  open DESC, "<$descfile" or die "could not open $descfile\n";
+  while (<DESC>) {
+    s/\r?\n$//;
+    /^(\S+)(\s.*)?$/ and $description{$1} = "$2";
+  }
+  close DESC;
+}
+
+sub unquote {
+	my $t = shift;
+	$t =~ s/&auml;/ae/g;
+	$t =~ s/&Auml;/Ae/g;
+	$t =~ s/&uuml;/ue/g;
+	$t =~ s/&Uuml;/Ue/g;
+	$t =~ s/&ouml;/oe/g;
+	$t =~ s/&Ouml;/Oe/g;
+	$t =~ s/&szlig;/ss/g;
+	return $t;
+}
+
+sub unquote2 {
+	my $t = shift;
+	$t =~ s/&auml;/ä/g;
+	$t =~ s/&Auml;/Ä/g;
+	$t =~ s/&uuml;/ü/g;
+	$t =~ s/&Uuml;/Ü/g;
+	$t =~ s/&ouml;/ö/g;
+	$t =~ s/&Ouml;/Ö/g;
+	$t =~ s/&szlig;/ß/g;
+	return $t;
+}
+
+my $src = join("", <STDIN>);
+
+$src =~ s/<title>(.*)</title>/;
+my $title = $1;
+$title =~ /^\s*(\S+)/;
+if (!defined $url) {
+  $url = "http://".lc($1);
+  $title =~ /(\S+)\s*$/;
+  $url .= "/".unquote($1).".html";
+}
+$title = unquote2($title);
+
+print <<EOT;
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE rss SYSTEM "http://my.netscape.com/publish/formats/rss-0.91.dtd">
+<rss version="0.91">
+<channel>
+<title>$title</title>
+<description>RSS Feed</description>
+<link>$url</link>
+<language>de</language>
+EOT
+
+my @links = ( [ "$title" , "$url" ] );
+
+while ($src =~ /<a\s+href="([^"]+)".*>(.*)<\/a>/g) {
+	push @links, [ unquote2($2), $1 ];
+}
+
+for (@links) {
+	next if $_->[1] !~ /^(https?)|(ftp):/;
+	my $title = $_->[0];
+	$title = $description{$_->[1]} if defined $description{$_->[1]};
+	next if $title eq "";
+	print <<EOT;
+<item>
+  <title>$title</title>
+  <link>$_->[1]</link>
+</item>
+EOT
+}
+
+print <<EOT;
+</channel>
+</rss>
+EOT

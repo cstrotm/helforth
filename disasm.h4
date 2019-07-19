@@ -1,0 +1,401 @@
+|  HelFORTH - x86 disassembler
+| -------------------------------------------------
+|      File: disasm.f
+|   Version: 1.0
+|    Author: Helmar Wodtke
+|      Year: 2004, 2005
+| -------------------------------------------------
+
+| here 1234 4321
+
+| ----------- utilities --------------------------------------
+|
+context disasm~
+enter disasm~
+
+: w@ dup c@ swap 1+ c@ 8 << or ;
+: pt>s dup 1- c@ ;
+: s>here | ptr n -- here+1 n
+  tuck here 2dup c! 1+ swap cmove here 1+ swap ;
+: getw | -- here+1 n
+  32 parse s>here ;
+
+here dup ] over 1+ 2dup =if drop ;then swap [ compile ] ;
+  : .. getw >num 0 =if 0 then [ compile ] ;
+
+: zcells 0; 0 , 1- zcells ;
+: _>spc | ptr n -- ptr'
+       0; 1- 2dup + dup c@ dup '_ =if drop 32 then swap c! _>spc ;
+: $$ -1 ;
+: .xhb 15 and
+  '0 over 9 >if drop 55 then + emit ;
+: .xb dup 4 >> .xhb .xhb ;
+: .xw dup 8 >> .xb .xb ;
+: .xd dup 16 >> .xw .xw ;
+: .sign >r over and 0 =if '+ emit r> drop ;then r> xor 1+ '- emit ;
+
+: .xsb_ dup c@ $80 $ff .sign .xb 1+ ;
+: .xsw $8000 $ffff .sign .xw ;
+: .xsw_ dup w@ .xsw 2+ ;
+: .xb_ dup c@ .xb 1+ ;
+: .xw_ dup w@ .xw 2+ ;
+
+: .xsd $80000000 $ffffffff .sign .xd ;
+: sigbyte dup $80 and 0 <>if $ff and $ff xor 1+ 0 swap - then ;
+: xdump dup 0 =if 2drop ;then 1- swap .xb_ space swap xdump ;
+: ,, ', emit ;
+
+: .r r> r> ."  rs: " dup . cr >r >r ;
+
+| ------------------------------------------------------------
+|
+| activities - jump vector for opcode disassembly
+|
+create _activity 256 zcells
+variable activity _activity activity !
+
+: known | c -- 0|activity_handler
+  cells activity @ + @ ;
+
+: (as:) dup -1 =if ;;
+  then cells activity @ + here swap ! (as:) ;
+: as: (as:) ] ;
+
+here ] pt>s type ;
+: is: getw 2dup _>spc drop 1+ allot
+  >r (as:) r> x: literal literal compile ] ;
+
+here ] pt>s type 1+ ;
+: => getw 2dup _>spc drop 1+ allot
+  >r (as:) r> x: literal literal compile [ ' ;; compile ] ;
+
+| ------------------------------------------------------------
+| code vectors for ea
+|
+
+doer |e make |e 'e emit ;
+doer w|d make w|d 'd emit ;
+doer |d make |d 'd emit ;
+doer getcell make getcell dup @ swap cell+ swap ;
+doer sigcell make sigcell ;
+doer offset make offset + ; | offset addr - addr'
+
+doer .addr ' .xd is .addr
+doer .cell ' .xd is .cell
+
+| registers
+
+: (reg) drop swap 7 and 2 * + 2 type ;
+: unireg |e " axcxdxbxspbpsidi" (reg) ;
+: segreg    " escsssdsfsgs????" (reg) ;
+: bytreg    " alcldlblahchdhbh" (reg) ;
+: eunireg like |e swap  undo |e  unireg is |e ;
+
+| wordlists
+
+: (wordlist) getw 2dup _>spc drop
+  over c@ '; =if 2drop 0 1, ;then 1+ allot drop (wordlist) ;
+: wordlist: create (wordlist) ;
+: select swap dup 0 =if drop 1+ pt>s ;then
+  1- swap dup c@ 1+ + select ;
+: .select select type ;
+
+| ------------------------------------------------------------
+| decode effective adresses
+|
+
+doer .[ make .[ '[ emit ;
+: ]; '] emit r> drop ;
+
+: sipidx | reg --
+  dup $24 =if drop ." esp?" ;then
+  3 >> 7 and dup 4 =if drop ." ???" ;then eunireg ;
+
+: (sip)
+  dup 1+ c@
+    dup sipidx
+    6 >> 3 and 0 over <>if 1 over << '* emit '0 + emit then
+    drop
+  dup c@ 6 >> 3 and
+    dup 0 =if drop '+ emit
+      1+ dup c@ 7 and
+        dup 5 =if drop 1+ getcell .cell ;then
+      eunireg 1+ ;then
+    1 =if 2+ .xsb_ ;then
+  2+ dup w@ .xsw ;
+
+: sip
+  dup c@ $C0 and
+    dup $C0 =if drop unireg 1+ ;then .[
+    0 =if dup c@ 7 and 5 =if 1+ getcell .cell ]; then then
+  dup c@ dup 7 and dup 4 =if 2drop (sip)
+   ]; then eunireg
+  6 >> dup 0 =if drop 1+ ]; then
+           1 =if 1+ .xsb_ ]; then
+  1+ .xsw_ ]; [
+
+doer eareg ' unireg is eareg
+
+doer ea make ea | ptr -- ptr'
+  dup c@ $c0 and
+    dup $00 =if over c@ 7 and 5 =if drop
+      1+ .[ dup @ .addr cell+ ]; then then
+    $c0 =if dup c@ eareg 1+ ;then
+  dup c@ 7 and 4 =if sip ;then
+  .[ dup c@ unireg
+    dup c@ $c0 and
+      dup $00 =if drop 1+ ]; then
+      dup $40 =if drop 1+ .xsb_ ]; then
+|      $80 =if 1+ .xsw_ ]; then
+    drop
+    1+ dup @ .xsd cell+ ]; [
+
+: eabyte like eareg swap
+  ['] bytreg is eareg
+  ea swap is eareg ;
+: w|d_ea like .[ swap make .[ w|d '[ emit ;then ea swap is .[ ;
+: subcode 1+ dup c@ 3 >> 7 and ;
+: unireg,ea subcode unireg ,, ea ;
+: ea,unireg subcode swap ea ,, swap unireg ;
+: bytreg,eabyte subcode bytreg ,, eabyte ;
+: eabyte,bytreg subcode swap eabyte ,, swap bytreg ;
+: eax 0 unireg ;
+
+: w? dup c@ 1 and ;
+: reg,ea w? if unireg,ea ;then bytreg,eabyte ;
+: ea,reg w? if ea,unireg ;then eabyte,bytreg ;
+: ea/w 1- w? if 1+ ea ;then ." byte " 1+ eabyte ;
+: /w dup 1 or ;
+
+| ------------------------------------------------------------
+
+wordlist: math1 add_  or_  adc_  sbb_ and_ sub_  xor_ cmp_  ;
+wordlist: math2 rol_  ror_ rcl_  rcr_ shl_ shr_  sal_ sar_  ;
+wordlist: math3 test_ ???_ not_  neg_ mul_ imul_ div_ idiv_ ;
+wordlist: strops ?    ?    movs  cmps ?    stos  lods scas  ;
+wordlist: wl-8f pop_  ???_ ???_  ???_ ???_ ???_  ???_ ???_  ;
+wordlist: wl-fe inc_  dec_ ???_  ???_ ???_ ???_  ???_ ???_  ;
+wordlist: wl-ff inc_  dec_ call_ call_far_ jmp_ jmp_far_ push_ ???_ ;
+wordlist: loops loopnz_ loopz_ loop_ ;
+
+: b|w|d dup c@ 1 and 0 =if 'b emit 1+ ;then w|d 1+ ;
+: register dup c@ 7 and unireg 1+ ;
+: shortjump 1+ dup c@ sigbyte over 1+ offset .addr 1+ ;
+: condition dup dup 6 and 6 =if 1 xor then 1 and 1 =if 'n emit then
+  1 >> 7 and " oczasplg" drop + c@ emit ;
+: near 1+ getcell sigcell over offset .addr ;
+: math1.1 1- subcode math1 .select ;
+: math1.2 subcode math1 .select ;
+: math2.1 subcode math2 .select ;
+: math2.2 subcode math2 .select ;
+: math3.1 subcode math3 .select ;
+
+$$
+$00 $08 $10 $18 $20 $28 $30 $38
+$01 $09 $11 $19 $21 $29 $31 $39 as: math1.1 ea,reg ;
+$02 $0A $12 $1A $22 $2A $32 $3A
+$03 $0B $13 $1B $23 $2B $33 $3B as: math1.1 reg,ea ;
+$04 $0C $14 $1C $24 $2C $34 $3C as: math1.1 1+ ." al," .xb_ ;
+$05 $0D $15 $1D $25 $2D $35 $3D as: math1.1 1+ eax ,, getcell .cell ;
+$06 => push_es
+$07 => pop_es
+$0E => push_cs
+$0F as: dup 1+ c@ $F0 and $80 =if
+        'j emit 1+ dup c@ condition space near ;then dup c@ .xb 1+ ;
+$16 => push_ss
+$17 => pop_ss
+$1E => push_ds
+$1F => pop_ds
+$26 => es:
+$27 => daa
+$2E => cs:
+$2F => das
+$36 => ss:
+$37 => aaa
+$3E => ds:
+$3F => aas
+$40 .. $47 is: inc_ register ;
+$48 .. $4F is: dec_ register ;
+$50 .. $57 is: push_ register ;
+$58 .. $5F is: pop_ register ;
+$60 is: pusha |d 1+ ;
+$61 is: popa |d 1+ ;
+$62 is: bound_ unireg,ea ;
+$63 is: arpl_ unireg,ea ;
+$64 => fs: $65 => gs: $66 => o2/o4 $67 => a2/a4
+$68 is: push |d space 1+ getcell .cell ;
+$69 is: imul_ unireg,ea ,, getcell .cell ;
+$6A is: push_ |d 1+ .xsb_ ;
+$6B is: imul_ unireg,ea ,, .xsb_ ;
+$6C $6D is: ins b|w|d ;
+$6E $6F is: outs b|w|d ;
+$70 .. $7F is: j dup c@ condition space shortjump ;
+$80 as: math1.2 eabyte ,, .xb_ ;
+$81 m{ as: math1.2 ea ,, } getcell .cell ;
+$83 m .xsb_ ;
+$84 /w is: test_ reg,ea ;
+$86 /w is: xchg_ reg,ea ;
+$88 /w is: mov_ ea,reg ;
+$8A /w is: mov_ reg,ea ;
+$8C is: mov_ subcode swap ea ,, swap segreg ;
+$8D is: lea_ unireg,ea ;
+$8E is: mov_ subcode segreg ,, ea ;
+$8F as: subcode wl-8f .select w|d_ea ;
+$90 => nop
+$91 .. $97 is: xchg_ eax ,, register ;
+$98 => cbw/cwde $99 => cdq
+$9B => wait
+$9E => sahf $9F => lahf
+$9C is: pushf m{ |d 1+ ; }
+$9D is: popf m
+$A0 is: mov_al,[ 1+ getcell .addr ]; [
+$A1 is: mov_ 1+ eax ." ,[$-$" getcell .addr ]; [
+$A2 m{ is: mov_[ 1+ getcell .addr } ." ],al" ;
+$A3 m ." ]," eax ;
+$A4 .. $A7 $AA .. $AF as: dup c@ 1 >> 7 and strops .select b|w|d ;
+$A8 is: test_al, 1+ .xb_ ;
+$A9 is: test_ 1+ eax ,, getcell .cell ;
+$B0 .. $B7 m{ is: mov_ dup c@ } bytreg ,, 1+ .xb_ ;
+$B8 .. $BF m unireg ,, 1+ getcell .cell ;
+$C0 /w as: math2.1 ea/w ,, .xsb_ ;
+$C2 is: ret_ 1+ .xw_ ;
+$C3 => ret
+$C4 is: les_ unireg,ea ;
+$C5 is: lds_ unireg,ea ;
+$C6 m{ is: mov_ 1+ ea ,, } .xb_ ;
+$C7 m getcell .cell ;
+$C8 is: enter_ 1+ .xw_ ,, .xb_ ;
+$C9 => leave
+$CA is: retf_ 1+ .xw_ ;
+$CB => retf
+$CC => int_3
+$CD is: int_ 1+ .xb_ ;
+$CE => into
+$CF => iret
+$D0 /w as: math2.2 ea/w ." ,1" ;
+$D2 /w as: math2.2 ea/w ." ,cl" ;
+$D4 is: aam m{ 1+ dup c@ 10 <>if space .xb_ ;then 1+ ; }
+$D5 is: aad m
+$D7 => xlatb
+$E0 .. $E2 as: dup c@ 3 and loops .select shortjump ;
+$E3 is: j 1 unireg ." z " shortjump ;
+$E4 is: in_al, 1+ .xb_ ;
+$E5 is: in_ eax ,, 1+ .xb_ ;
+$E6 is: out_ 1+ .xb_ ." ,al" ;
+$E7 is: out_ 1+ .xb_ ,, eax ;
+$E8 is: call_ near ;
+$E9 is: jmp_ near ;
+$EB is: jmp_short_ shortjump ;
+$EC => in_al,dx
+$ED is: in_ eax ." ,dx" 1+ ;
+$EE => out_dx,al
+$EF is: out_dx, eax 1+ ;
+$F0 => lock
+$F1 => rep
+$F2 => repnz
+$F3 => repz
+$F4 => hlt
+$F5 => cmc
+$F6 m{ as: math3.1 1- subcode swap } eabyte swap 0 =if ,, .xsb_ then ;
+$F7 m ea swap 0 =if ,, getcell .cell then ;
+$F8 => clc
+$F9 => stc
+$FA => cli
+$FB => sti
+$FC => cld
+$FD => std
+$FE as: subcode wl-fe .select eabyte ;
+$FF as: subcode wl-ff .select w|d_ea ;
+drop
+
+| ------------------------------------------------------------
+
+: disasm' | ptr -- ptr'
+  dup c@ known ?dup 0 =if ." db " .xb_ ;then execute ;
+
+doer typelabel make typelabel ." : " type ;
+: islabel  dup cell+ @ over 2 cells + dup c@ + 1+ =if 1 ;then 0 ;
+: handle_label islabel dup 0 =if ;then drop
+  dup 2 cells + 1+ pt>s typelabel cell+ @ 1 ;
+
+doer type_literal
+
+: '>name 8 + dup c@ - 5 + pt>s ;
+
+: handle_literal
+  dup c@ $E8 <>if 0 ;then
+  dup 1+ @r case
+|    ['] (e:) of make type_literal
+|          ." (e:) " 5 + @ .addr ;then endof
+    ['] (") of make type_literal
+          '" emit space
+          5 + @ pt>s type
+          '" emit ;then endof
+    ['] (m:) of make type_literal
+          ." m: " 5 + @ '>name type ;then endof
+    ['] (f:) of make type_literal
+          ." f: " 5 + @ '>name type ;then endof
+    drop 0 ;;
+  endcase 9 2dup space xdump space over type_literal + 1 ;
+
+: xlfind
+  state 60 + @
+  begin | '$ emit
+    dup state 24 + @ u<if
+      cell+ 1+
+      2dup pt>s + @ =if ;then
+      pt>s + 9 +
+  else drop 0 ;then repeat ;
+
+: xlabel xlfind 0; pt>s typelabel cr ;
+
+doer comment
+
+variable caddr
+
+: showaddr
+  caddr @ xlfind ?dup 0 =if drop ;then
+  space ." ; " pt>s type drop ;
+
+create (iniout) like emit ,
+: iniout like emit (iniout) ! ;
+: -output ['] drop is emit ;
+: +output (iniout) @ is emit ;
+
+;enter
+
+with disasm~
+: disasm vector 0;                | ptr c -- ptr'
+  1- swap
+  iniout
+  undo comment
+  make .addr
+    dup caddr !
+    ['] showaddr is comment
+    undo .addr .addr ;then
+  xlabel
+  dup .xd space
+  handle_label 0 <>if cr swap disasm ;then
+  handle_literal 0 =if
+    dup -output disasm' +output
+    over - 2dup space xdump
+    9 swap - 0 over >if drop 0 then 3 * 1+ spaces disasm'
+  then comment cr swap disasm ;
+: see vector ' ?dup and:
+   begin
+     dup w@ $9090 =if
+       dup .xd space space ." ..." cr
+       begin dup c@ $90 =while 1+
+       m{ xlfind 0 =while dup here u<while } repeat
+     else 1 disasm then
+   m repeat drop ;
+;with
+
+| ." disassembler package 0.1 for HelFORTH loaded." cr
+| ." diagnostics: " . space . cr
+| here swap - . space ." bytes used" cr
+| : unknown_dump 0; 1- dup $FF xor known 0 =if
+|   dup $FF xor .xb space then unknown_dump ;
+| ." unknown byte codes: " 256 unknown_dump cr
+| cr
+| ------------------------------------------------------------

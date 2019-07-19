@@ -1,0 +1,30 @@
+| Requires: hf disasm ans ans-ext footer
+
+| with screen~
+| :: v: key dup | blue foreground
+|   emit | default
+|   ; is key
+| ;with
+
+with (ans)~
+ans words
+ans bye
+ans see
+
+| :: ." noword!" rdrop ; state 100 + !
+
+:: v: find ?dup if ;then
+   state 72 + @@
+   2dup >pad >upstr v: find >r
+   state 72 + !! r> ; is find
+
+' +ans-input-handle
+
+;with
+
+verbose on
+enter ans~ ;with
+
+| 1024 allot align
+
+>r

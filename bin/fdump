@@ -1,0 +1,19 @@
+#! /usr/bin/perl
+# =================================================
+#  HelFORTH - build system
+#      File: bin/fdump
+#   Version: 0.1
+#    Author: Helmar Wodtke
+#      Year: 2005
+# -------------------------------------------------
+
+my $data = join('', <>);
+for (my $i = 0; $i < length($data); $i += 4) {
+	my @d = split('', substr($data, $i, 4));
+	my $l = scalar @d;
+	print '$';
+	while (defined (my $t = pop @d)) {
+		print unpack("H*", $t);
+	}
+	print " ", ($l != 4 ? "$l, " : ", ");
+}

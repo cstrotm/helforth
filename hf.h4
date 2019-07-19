@@ -1,0 +1,316 @@
+| ====================================================================
+|  HelFORTH - bootstrap code
+|      File: hf.h4
+|   Version: 1.0 pre 11
+|    Author: Helmar Wodtke
+|      Year: 2004, 2005
+| --------------------------------------------------------------------
+| Requires: hf-nano
+
+| --------------------------------------------------------------------
+| some stuff from ANS port (TODO: put inliners to core)
+
+: >upper dup 'a u<if ;then
+         'z over u<if ;then
+         -33 and ;
+: >upstr 2dup 0 ?do dup c@ >upper over c! 1+ loop drop ;
+' ?inline class !
+: um/mod [ $168bad91 , $1689f1f7 , ;
+: m*     [ $892ef799 , $16 1, ;
+: s>d    [ $04ee8399 , $1689 2, ;
+: sm/rem [ $168bad91 , $1689f9f7 , ;
+: um*    [ $26f7d231 , $1689 2, ;
+: 2/     [ $f8d1 2, ;
+: sp     [ $8904ee83 , $f08906 3, ;
+: */     [ $f799ad91 , $83f9f72e , $04c6 2, ;
+: */mod  [ $f799ad91 , $89f9f72e , $16 1, ;
+: pick   [ $86048b 3, ;
+forth
+: fm/mod [ $168bad91 , $d285f9f7 , $c0850774 , $01480379 , $1689ca 3, ;
+: ud/mod [ $04468b91 , $f1f7d231 , $8b044689 , $89f1f706 , $9206 2, ;
+sp constant depth0
+: depth  sp negate depth0 + 4 / ;
+: cmove> [ $93ad9153 , $4909e3ad , $8808148a , $f5eb0b14 , $ad5b 2, ;
+: move   >r 2dup u<if r> cmove> ;then r> cmove ;
+: char   wsparse drop c@ ;
+: [char] char ?literal ; immediate
+: quote  here >r 10000 allot
+         here
+         char begin key 2dup <>while 1, repeat 2drop
+         here over -
+         r> here - allot ;
+: [quote] char parse (string) ; immediate
+|
+| pictured output
+|
+variable (pic)
+variable pic
+: <#     pad 128 + dup pic ! (pic) ! ;
+: #>     2drop pic @ (pic) @ over - ;
+: >digit base @ mod dup 9 >if 55 + ;then 48 + ;
+: hold   -1 pic +! pic @ c! ;
+: #      base @ ud/mod >digit hold ;
+: #s     begin # 2dup or while repeat ;
+
+| --------------------------------------------------------------------
+| some math stuff
+|
+: sqrt       1 begin 2dup / over - 2 / ?dup while + repeat nip ;
+
+| --------------------------------------------------------------------
+| command line arguments
+|
+     rr constant argc
+     rp cell+ constant (argv)
+     (argv) argc 3 + cells + constant (env)
+
+: arg        cells (argv) + @ sz ;
+variable ep
+variable (equery) 64 allot
+: env        (env) cell- ep ! (equery) place
+: env+       begin ep 4 over +! @ @ dup while >r (equery) count r>
+             equal ?dup 0 =while repeat dup and: sz ;
+: .env       env begin while drop ep @ @ sz type cr env+ repeat ;
+
+| --------------------------------------------------------------------
+| "eval" and local macros
+|
+:: 0 ;
+: eval
+  state 16 + @ >r
+  state 20 + @ >r
+  like (MoreInput) >r
+  literal is (MoreInput)
+  state 20 + !
+  state 16 + !
+  interpret drop
+  r> is (MoreInput)
+  r> state 20 + !
+  r> state 16 + ! ;
+
+create (m) 256 allot
+macro
+: m{ '} parse (m) place
+: m (m) count eval ;
+forth
+
+| ---------------------------------------------------------------------
+| implementation of "times"
+|
+32 3 * stack (tstack)
+: (times)
+    r> m{ push (tstack) } m m
+    begin (tstack) while
+      -1 tos (tstack) +! snd (tstack) @ execute
+    repeat m{ pop (tstack) } drop m drop m >r ;
+: times ' ?literal e: (times) ; immediate
+
+| ---------------------------------------------------------------------
+| local compilation and execution/eval
+|
+3 10 * stack (lx)
+variable (lxoff) 1024 (lxoff) !
+make { state @ m{ push (lx) } here m (lxoff) @ allot here m x: ] ;
+make } x: ;; m{ pop (lx) } >r m here - allot m state ! [ ;
+: e{ '} parse (string) e: eval ; immediate
+
+| --------------------------------------------------------------------
+| binary searches (I hope you know...)
+|
+| The search always tries to find the exact match f(a)==b or the next
+| value that is below the searched value.
+| The minimum return value "a" is 0.
+| You can ensure that always a value below or equal to the searched
+| value is returned in that you guarantee that the f(0) value is below
+| or equal to the searched value.
+|
+| *begin  | n -- a ( start binary search in values 0..n-1, "a" is the try )
+| *repeat | f(a) b -- a ( find b, jump back to *begin if needed, a' is the
+|         |             value that will be compared to b, a is the result of
+|         |             the binary search )
+| Example (square root "sqr" to x, where sqr^2 <= x, simplified version):
+|           : sqr dup *begin dup * over *repeat nip ;
+|
+: (binloop) 2dup =if 2drop 0 ;then
+            >if  rr> 1 >> rr> over - >rr
+            else rr> 1+ 1 >> then >rr 1 ;
+macro
+: *begin    e{ 0 >r >r begin r 1 >while r 1 >> rr> + dup >rr } ;
+: *repeat   e{ (binloop) while repeat rdrop r> } ;
+forth
+
+| ---------------------------------------------------------
+| coroutines
+|
+: (rdup)    r >r ;
+: <\        $68 1, here 0 , e{ (rdup) vector } ; immediate
+: \\        r> r> branch! ;
+: \>        here 5+ swap ! then> rdrop r 5+ r> branch! ;
+            :: execute cp on ; class'
+
+| ---------------------------------------------------------------------
+|
+: spaces times space ;
+
+| ---------------------------------------------------------------------
+| context handling
+|
+variable (cstack)
+: (@cst      (cstack) dup >rr @ ;
+: (find0)    vector [ ' find 5+ compile ;
+: (cfind)    last @ >r dup @ last ! cell+ @ execute r> last ! ;
+: (last>ctx) last @ (@cst @ ! cells r> +! ;
+: enter      ' [
+: >enter     1 (last>ctx) dup (cstack) @ ! @ last ! ;
+: ;enter     -1 (last>ctx) (cstack) @ @ @ last ! ;
+: (context)  >enter ? @@ execute ;enter ;
+: context    create 0 , ['] (find0) , last @ , ['] (context) class' ;
+macro
+: with       enter (@cst cell- @@ tuck r @ cell- ! r @ ! 4 r +! r> @ !
+             ;enter ;
+: ;with      (@cst @ -4 r +! r> @ ! ;
+forth
+: (xfind)    2dup (find0) ?dup 0 =if
+               (cstack) @ begin cell-
+                 dup >r @ dup while
+                 >r 2dup r> (cfind) ?dup 0 =while
+               r> repeat rdrop
+             then nip nip ;
+: ~.         (cstack) @ begin dup @ while
+               dup @ [ 2 cells ] literal + @ (.word)
+             cell- repeat drop cr ;
+context ~ last @ ' ~ !
+0 , here (cstack) ! ' ~ , 32 cells allot
+' (xfind) ' find branch!
+
+| --------------------------------------------------------------------
+| misc
+|
+: (XXX)  state 72 + @@ type space ." is not implemented" cr drop ;
+: XXX    ['] (XXX) class' ; immediate
+: @+     cell+ dup cell- @ ;
+
+| --------------------------------------------------------------------
+| Just a simple idea to make arrays i've seen somewhere.
+|
+: alloz  here over allot swap 0 fill ;
+8 4 2 1
+4 times constant byte-size word-size cell-size double-size
+variable (array)
+: array  create dup , * alloz class> (array) ! ;
+short @ short off
+: ]]     [ immediate ] (array) @
+         | *** optimization *** |
+         state @ if
+           lit? if dup @ lit * + cell+ x: literal    ;then
+           dup @ case
+               byte-size of cell+ x: literal e: +    ;then
+               word-size of $45048d stub: 3, cell+ , ;then
+               cell-size of $85048d stub             ;then
+             double-size of $c5048d stub             ;then
+           endcase
+         then
+         | *** /optimization *** |
+         ?literal then> tuck @ * + cell+ ;
+short !
+| ------------------------------------------------------------------
+| Unicode support
+|
+| utf8@       p c -- p' c' ch|-1     fetch character from UTF-8 string
+| uhold       n --                   like HOLD
+| uemit       n --                   EMIT character as UTF-8
+| uchars      p c -- n               return count of unicode chars
+|
+context (utf8)~
+enter (utf8)~
+variable utcnt
+variable utmin | The utmin test is needed to avoid char faking.
+: ut@         utmin @ 6 << utmin !
+              utcnt @ if -1 utcnt +! swap 1+ swap
+                6 << over 1- c@
+                dup $C0 and $80 =if $3F and or ;then drop
+              then rdrop drop -1 ; ' subr class'
+] { 5 for here constant e: ut@ loop } ut5 ut4 ut3 ut2 ut1 ;
+: utwrong,    -1 , ['] nop , ;
+: utcodes,    0 swap for dup , 1+ over , loop 2drop ;
+create utftab $40 times utwrong,
+              ut1 160 utcodes, ut2 16 utcodes, ut3 8 utcodes,
+              ut4   4 utcodes, ut5  2 utcodes, utwrong, utwrong,
+: (utf8)      1+ dup 1- c@ dup $80 and 0; - 3 << utftab + exec ;
+~ : utf8@     1 utmin !
+              dup if 1- utcnt ! (utf8) utcnt @ swap
+                utmin @ 1- 0; over u<if ;then
+              then drop -1 ;
+create utconv
+      $7F , $00 1,
+     $7FF , $C0 1,
+    $FFFF , $E0 1,
+  $1FFFFF , $F0 1,
+ $3FFFFFF , $F8 1,
+$7FFFFFFF , $FC 1,
+: (ut#)       dup $3F and $80 or hold 6 >> ;
+~ : uhold     vector $7FFFFFFF and dup >r
+              utconv begin @+ r u<while swap (ut#) swap 1+ repeat
+              rdrop c@ or hold ;
+;enter
+: uemit       vector <# dup dup uhold #> type ;
+: uchars      0 >r begin ?dup while utf8@ drop 1 rp +! repeat drop r> ;
+
+| --------------------------------------------------------------------
+| screen library
+|
+doer page ( -- )
+context screen~
+enter screen~
+  : .10 base @ swap 10 base ! (#) base ! ;
+  : esc 27 emit ;
+  : esc[ esc '[ emit ;
+  : (esc[") esc[ type ;
+  : esc[" x: " e: (esc[") ; immediate
+  doer at-xy ( x y -- )
+    make at-xy esc[ swap .10 '; emit .10 'H emit ;
+  doer home ( -- )
+    make home esc[" H" ;
+    make page esc[" 2J" home ;
+  doer color ( n -- )
+    make color esc[ .10 'm emit ;
+  doer default
+    make default 0 color ;
+  : bold 1 color ;
+  : underscore 4 color ;
+  : blink 5 color ;
+  : reverse 7 color ;
+  : concealed 8 color ;
+  0 constant black
+  1 constant red
+  2 constant green
+  3 constant yellow
+  4 constant blue
+  5 constant magenta
+  6 constant cyan
+  7 constant white
+  : foreground 30 + color ;
+  : background 40 + color ;
+  : +colors
+    undo home undo page undo color undo default undo at-xy ;
+  : -colors
+    ['] nop is home
+    ['] nop is page
+    ['] drop is color
+    ['] nop is default
+    ['] 2drop is at-xy ;
+create (old.word) like (.word) ,
+: (wcolor) vector
+    dup cell+ dup c@ + 5+ @ case
+    ['] (XXX)     of bold red foreground    endof
+    ['] execute   of bold                   endof
+    ['] ?execute  of                        endof
+    ['] ?literal  of bold blue foreground   endof
+    ['] ?inline   of green foreground       endof
+    ['] (context) of bold yellow foreground endof
+    bold green foreground
+    endcase ;
+: +wcolors make (.word) (wcolor) (old.word) @ execute default then ;
+: -wcolors (old.word) @ is (.word) ;
++wcolors
+;enter

@@ -1,0 +1,87 @@
+#! /usr/bin/perl
+# =================================================
+#  HelFORTH - build system
+#      File: bin/fcompress
+#   Version: 0.4
+#    Author: Helmar Wodtke
+#      Year: 2004
+# -------------------------------------------------
+
+use strict;
+
+die "$0: ARGUMENT MISSING!\n"
+  if scalar @ARGV == 0;
+my $src = join('', <>);
+
+my $p = 32;
+my @dic;
+my %dic;
+
+my @tokens;
+my %tokens;
+
+while ($src =~ /(\S+)/g) {
+	my $t = $1;
+	if ($t eq "|") {
+		$src =~ /\n/g or last;
+		next;
+	}
+again:
+	if (length($t) == 15) {
+		push @tokens, $t, " ";
+	} else {
+		if (length($t) > 15) {
+			my $c = 15;
+			pos($src) -= length($t) - $c;
+			$t = substr($t, 0, $c);
+		}
+		push @tokens, $t;
+	}
+	$tokens{$t} = 0 if not defined $tokens{$t};
+	$tokens{$t}++;
+	if ($t =~ /^([xemf]:)|(exec)$/i) {
+#		print STDERR "?";
+		$src =~ /(\S+)/g or last;
+		$t = $1;
+		goto again;
+	}
+}
+
+for (@tokens) {
+	if (/^\$([0-9A-F][0-9A-F])$/i) {
+		print chr(255);
+		print pack("H*", $1);
+		next;
+	}
+	if ($_ eq " ") {
+		print chr(16);
+		next;
+	}
+	if ($tokens{$_} < 3) {
+		if (length($_) > 1 and /^(\d+)$/) {
+			if ($1 < 256) {
+				print chr(255);
+				print chr($1);
+				next;
+			}
+		}
+	}
+	if ($tokens{$_} == 1) {
+		print chr(16 + length($_)), $_;
+		next;
+	}
+	if (defined $dic{$_}) {
+		print chr($dic{$_});
+	} else {
+		print chr(length($_)), $_;
+		undef $dic{$dic[$p]};
+		$dic{$_} = $p;
+		$dic[$p] = $_;
+		$p++;
+		if ($p > 254) {
+			$p = 32;
+			$| = 1; print STDERR "!";
+		};
+	}
+}
+print chr(0);

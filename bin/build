@@ -1,0 +1,38 @@
+#! /bin/bash
+if [ "$1" != "-o" ] ; then
+  echo "usage: $0 -o output ... dependencies ..."
+  exit -1
+fi
+shift
+OUT="$1"
+HFBIN="`dirname "$0"`"
+HFDIR="$HFBIN/.."
+REMOVECORE=0
+REMOVERUNTIME=0
+REMOVEASM=0
+if [ ! -e core.asm ] ; then
+  REMOVECORE=1
+  ln -s "$HFDIR/core.asm" core.asm
+fi
+if [ ! -e runtime.asm ] ; then
+  REMOVERUNTIME=1
+  ln -s "$HFDIR/runtime.asm" runtime.asm
+fi
+shift
+("$HFBIN/fcompress" `"$HFBIN/fdep" "$@"` >"$OUT.bc") \
+  || exit -1
+if [ ! -e "$OUT.asm" ] ; then
+  REMOVEASM=1
+  "$HFBIN/asmgen" "$OUT" >"$OUT.asm" || exit -1
+fi
+"$HFBIN/mkdict" "$OUT.asm" core.asm runtime.asm >"$OUT.dict" \
+  2>/dev/null || exit -1
+"$HFBIN/fasm" "$OUT.asm" || exit -1
+if [ -e "$OUT" ] ; then chmod +x "$OUT"; fi
+echo "***" build for "$OUT" is complete.
+if [ $REMOVEASM == 1 ] ; then rm "$OUT.asm"; fi
+if [ $REMOVECORE == 1 ] ; then rm core.asm; fi
+if [ $REMOVERUNTIME == 1 ] ; then rm runtime.asm; fi
+rm "$OUT.dict"
+rm "$OUT.bc"
+echo "***" cleanup for "$OUT" is complete.

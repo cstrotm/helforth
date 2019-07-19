@@ -1,0 +1,71 @@
+#! /usr/bin/perl
+# =================================================
+#  HelFORTH - build system
+#      File: bin/mkdict
+#   Version: 0.1
+#    Author: Helmar Wodtke
+#      Year: 2005
+# -------------------------------------------------
+
+my %called;
+my %words;
+my %macros;
+my %inline;
+my %defined;
+
+$defined{$_} = 1 for qw(
+	DictLast FDictStart Handler
+	eax ebx ecx edx esi edi
+);
+
+my @callers = (qw(call dd j\S\S?));
+my $callers = "((".join(")|(", @callers)."))";
+
+while (<>) {
+
+	s/^([^|]+)\t\|.*$/$1/;
+
+	if (/\s$callers\s/go) {
+		/\G\s*(\S+)/g and $called{$1} = 1;
+		/ö/;
+	}
+	/^(\S+):.*;\sWORD\s(\S+)/ and $words{$2} = $1;
+	/^(\S+):.*;\sMACRO\s(\S+)/ and $macros{$2} = $1;
+	/^(\S+):.*;\sINLINE\s(\S+)/ and $inline{$2} = $1;
+	/^(\S+)(\s*[:=])|(\sequ\s)/ and $defined{$1} = 1;
+}
+
+print <<EOT;
+DictLast equ 0
+
+DicID equ 8000h
+EOT
+for (sort keys %inline) {
+	print "Dict \"$_\", $inline{$_}\n";
+}
+print "\nDicID equ 0C000h\n";
+for (sort keys %words) {
+	print "Dict \"$_\", $words{$_}\n";
+}
+print "\nDicID equ 0C000h\n";
+for (sort keys %macros) {
+	print "Dict \"$_\", $macros{$_}\n";
+}
+print "db 0\n";
+
+my @never;
+for (sort (keys %words, keys %inline)) {
+	push @never,$_ if not defined $called{$words{$_}};
+}
+print STDERR "never called in core: ", join(" ", @never), "\n"
+	if scalar @never;
+
+my @outside;
+for (sort keys %called) {
+	next if /^[-0-9]/;
+	next if length($_) == 1;
+	push @outside, $_ if not defined $defined{$_};
+}
+print STDERR "!!! label(s) outside core: ", join(" ", @outside), "\n"
+	if scalar @outside;
+

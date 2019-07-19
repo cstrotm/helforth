@@ -1,0 +1,100 @@
+| ---------------------------------------------------------------------
+| comfortable file io for HelFORTH 2
+|
+| open/r  ( addr cnt --              ) open file for reading
+| open/rw ( addr cnt --              ) open file for reading and writing
+| open/w  ( addr cnt --              ) open file for writing
+| read    ( addr cnt -- 0|(addr cnt) ) read from file
+| write   ( addr cnt --              ) write to file
+| close   ( --                       ) close opened file
+| seek    ( p --                     ) move reading pointer to position p
+| tell    ( -- p                     ) get current file position
+| size    ( -- n                     ) return size of file
+| creat   ( addr cnt --              ) create file
+| exists  ( addr cnt -- 0|-1         ) returns 0 if file not readable
+|
+context fileio~
+enter fileio~
+| constants from fcntl.h
+     &0003 constant O_ACCMODE
+        &0 constant O_RDONLY
+        &1 constant O_WRONLY
+        &2 constant O_RDWR
+      &100 constant O_CREAT
+      &200 constant O_EXCL
+      &400 constant O_NOCTTY
+     &1000 constant O_TRUNC
+     &2000 constant O_APPEND
+     &4000 constant O_NONBLOCK
+O_NONBLOCK constant O_NDELAY
+    &10000 constant O_SYNC
+    &20000 constant FASYNC
+    &40000 constant O_DIRECT
+   &100000 constant O_LARGEFILE
+   &200000 constant O_DIRECTORY
+   &400000 constant O_NOFOLLOW
+         0 constant F_DUPFD
+         1 constant F_GETFD
+         2 constant F_SETFD
+         3 constant F_GETFL
+         4 constant F_SETFL
+         5 constant F_GETLK
+         6 constant F_SETLK
+         7 constant F_SETLKW
+         8 constant F_SETOWN
+         9 constant F_GETOWN
+        10 constant F_SETSIG
+        11 constant F_GETSIG
+        12 constant F_GETLK64
+        13 constant F_SETLK64
+        14 constant F_SETLKW64
+         1 constant FD_CLOEXEC
+         0 constant F_RDLCK
+         1 constant F_WRLCK
+         2 constant F_UNLCK
+         4 constant F_EXLCK
+         8 constant F_SHLCK
+        16 constant F_INPROGRESS
+         1 constant LOCK_SH
+         2 constant LOCK_EX
+         4 constant LOCK_NB
+         8 constant LOCK_UN
+        32 constant LOCK_MAND
+        64 constant LOCK_READ
+       128 constant LOCK_WRITE
+       192 constant LOCK_RW
+      1024 constant F_LINUX_SPECIFIC_BASE
+: r_read     3 dup     (SysCall) ; | cnt addr fd -- r
+: r_write    3 4       (SysCall) ; | cnt addr fd -- r
+: r_open     3 5     (SZSysCall) ; | mode flags addr len -- fd|...
+: r_close    1 6       (SysCall) ; | fd -- r
+: r_creat    2 8     (SZSysCall) ; | mode addr len -- r
+: r_symlink  2 83  (SZSZSysCall) ; | addr2 len2 addr1 len1 -- r
+: r_lseek    3 19      (SysCall) ; | origin offset fd -- r
+: r/o        O_RDONLY ;
+: r/w        O_RDWR ;
+: w/o        O_WRONLY ;
+variable (filevar)
+: result     (filevar) @ ;
+: ioerr      result ;
+: cmode      result 2 cells + ;
+: handle     result cell+ ;
+: close      handle @ -1 >if handle @ r_close result ! then handle on ;
+: open/r     r/o stub: close cmode @ swap 2swap r_open handle ! ;
+: open/rw    r/w stub ;
+: open/w     w/o stub ;
+: read       over handle @ r_read dup result ! 1 over >if 2drop 0 ;then ;
+: write      swap handle @ r_write result ! ;
+: seek       0 swap handle @ r_lseek result ! ;
+: tell       1 0 handle @ r_lseek ;
+: size       tell 2 0 handle @ r_lseek swap seek ;
+: creat      >r cmode @ swap r> r_creat handle ! ;
+: file       create here (filevar) ! -1 , -1 , &666 ,
+             does> (filevar) ! ;
+file (dirtyfile)
+: dirty...   r> result >rr >r (dirtyfile)
+             later> (dirtyfile) close rr> (filevar) ! ;
+: exists     dirty... open/r handle @ -1 >if -1 ;then 0 ;
+~ : cat      wsparse (string) then> dirty... open/r
+             pad stub: /pad read 0; over swap type stub ; ~ immediate
+;enter
